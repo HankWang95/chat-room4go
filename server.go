@@ -1,18 +1,13 @@
 package chat_room4go
 
 import (
-	"net"
-	"log"
 	"bufio"
 	"encoding/json"
+	"log"
+	"net"
 )
 
 
-type chatServer struct {
-	net.Listener
-}
-
-var hubList = make(map[string]*Hub)
 
 type Message struct {
 	From    string `json:"from"`
@@ -22,35 +17,37 @@ type Message struct {
 	To      string `json:"to"`
 }
 
-func NewServer(serverAddr string) *chatServer {
-	server, err := net.Listen("tcp", serverAddr)
+func NewServer(serverAddr string)  {
+	listener, err := net.Listen("tcp", serverAddr)
 	if err != nil {
 		log.Fatal("tcp 聊天室连接失败")
 	}
-	var chatServer = &chatServer{server}
-	return chatServer
+	go chatRoomListener(listener)
 }
 
-func (this *chatServer) Listen() {
+func chatRoomListener(listener net.Listener) {
 	for {
-		conn, err := this.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			log.Fatal("chat-room hub tcp-conn error!")
 		}
-		reader := bufio.NewScanner(conn)
-		data := reader.Bytes()
+		reader := bufio.NewReader(conn)
+		data, err := reader.ReadBytes('\n')
+		if err != nil {
+			log.Print(err)
+			continue
+		}
 		msg := &Message{}
 		json.Unmarshal(data, msg)
 
-		var hub = &Hub{}
-
-		for hubId := range hubList {
-			if hubId == msg.Hub {
-				hub = hubList[hubId]
-				hub.addConnection(conn, msg.From)
-				break
-			}
+		if hub ,ok := hubList[msg.Hub]; ok {
+			hub.addConnection(conn, msg.From)
+		} else{
+			msg.From = "系统通知"
+			msg.Msg = "该hub不存在"
+			data, _ := json.Marshal(msg)
+			conn.Write(data)
+			conn.Close()
 		}
 	}
 }
-
